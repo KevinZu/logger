@@ -52,6 +52,14 @@ var (
 	defaultLogger *Logger
 )
 
+var (
+	iLogs       []io.Writer
+	wLogs       []io.Writer
+	eLogs       []io.Writer
+	logPath     string
+	logFileName string
+)
+
 // initialize resets defaultLogger.  Which allows tests to reset environment.
 func initialize() {
 	defaultLogger = &Logger{
@@ -66,6 +74,10 @@ func init() {
 	initialize()
 }
 
+func LoggerInit(name string, verbose, systemLog bool, logPath string, logFile string) *Logger {
+	return nil
+}
+
 // Init sets up logging and should be called before log functions, usually in
 // the caller's main(). Default log functions can be called before Init(), but log
 // output will only go to stderr (along with a warning).
@@ -74,6 +86,7 @@ func init() {
 // logger.
 // If the logFile passed in also satisfies io.Closer, logFile.Close will be called
 // when closing the logger.
+
 func Init(name string, verbose, systemLog bool, logFile io.Writer) *Logger {
 	var il, wl, el io.Writer
 	if systemLog {
@@ -84,9 +97,9 @@ func Init(name string, verbose, systemLog bool, logFile io.Writer) *Logger {
 		}
 	}
 
-	iLogs := []io.Writer{logFile}
-	wLogs := []io.Writer{logFile}
-	eLogs := []io.Writer{logFile}
+	iLogs = []io.Writer{logFile}
+	wLogs = []io.Writer{logFile}
+	eLogs = []io.Writer{logFile}
 	if il != nil {
 		iLogs = append(iLogs, il)
 	}
@@ -268,6 +281,35 @@ func (l *Logger) Fatalf(format string, v ...interface{}) {
 	l.output(sFatal, 0, fmt.Sprintf(format, v...))
 	l.Close()
 	os.Exit(1)
+}
+
+func checkWriter(logs []io.Writer, writer io.Writer) int {
+	for i, w := range logs {
+		if w == writer {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func replaceLogsWriter(logs []io.Writer, oldWriter io.Writer, newWriter io.Writer) bool {
+	i := checkWriter(logs, oldWriter)
+	if i < 0 {
+		return false
+	}
+
+	logs[i] = newWriter
+
+	return true
+}
+
+func ReplaceWriter(oldWriter io.Writer, newWriter io.Writer) bool {
+	if replaceLogsWriter(iLogs, oldWriter, newWriter) && replaceLogsWriter(eLogs, oldWriter, newWriter) && replaceLogsWriter(wLogs, oldWriter, newWriter) {
+		return true
+	} else {
+		return false
+	}
 }
 
 // Info uses the default logger and logs with the Info severity.
