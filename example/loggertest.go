@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
-	"github.com/google/logger"
+	"github.com/KevinZu/logger"
 	"time"
 )
 
