@@ -21,7 +21,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 )
 
 type severity int
@@ -50,14 +54,13 @@ const (
 var (
 	logLock       sync.Mutex
 	defaultLogger *Logger
-)
-
-var (
-	iLogs       []io.Writer
-	wLogs       []io.Writer
-	eLogs       []io.Writer
-	logPath     string
-	logFileName string
+	sysYear       int
+	sysMonth      string
+	sysDay        int
+	logFileName   string
+	sysLogger     *Logger
+	fileObj       *os.File
+	verbose       bool
 )
 
 // initialize resets defaultLogger.  Which allows tests to reset environment.
@@ -74,8 +77,100 @@ func init() {
 	initialize()
 }
 
-func LoggerInit(name string, verbose, systemLog bool, logPath string, logFile string) *Logger {
-	return nil
+func checkSysTimeOfDay() bool {
+	year := time.Now().Year()
+	month := time.Now().Month().String()
+	day := time.Now().Day()
+
+	if sysYear == year && sysMonth == month && sysDay == day {
+		return false
+	} else {
+		sysYear = year
+		sysMonth = month
+		sysDay = day
+		return true
+	}
+}
+
+func PathCheck(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else {
+		err := os.MkdirAll(path, 0711)
+		if err != nil {
+			fmt.Println("Error creating directory")
+			return err
+		}
+		return nil
+	}
+}
+
+func getCurrentDirectory() string {
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return strings.Replace(dir, "\\", "/", -1)
+}
+
+func LoggerInit(logPath string, fileName string, verb bool, systemLog bool) *Logger {
+	if logPath == "" {
+		logPath = path.Join(getCurrentDirectory(), "log")
+
+	}
+
+	verbose = verb
+
+	es := PathCheck(logPath)
+	if es != nil {
+		//Errorf("logPath Check error:%v", ec)
+		return nil
+	}
+
+	logFileName = path.Join(logPath, fileName)
+
+	checkSysTimeOfDay()
+
+	file := logFileName + fmt.Sprintf("%d%s%d.log", sysYear, sysMonth, sysDay)
+
+	fmt.Println("file: ", file)
+
+	lf, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0660)
+	if err != nil {
+		Fatalf("Failed to open log file: %v", err)
+		return nil
+	}
+
+	logger := Init("Luxshare.Ams", verbose, true, lf)
+
+	if logger != nil {
+		defaultLogger = logger
+		fileObj = lf
+		return logger
+	} else {
+		lf.Close()
+		return nil
+	}
+
+}
+
+func loggerReInit() *Logger {
+	if defaultLogger != nil {
+		defaultLogger.Close()
+		fileObj.Close()
+	}
+
+	file := logFileName + fmt.Sprintf("%d%s%d.log", sysYear, sysMonth, sysDay)
+
+	lf, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0660)
+	if err != nil {
+		//logger.Fatalf("Failed to open log file: %v", err)
+		return nil
+	}
+
+	logger := Init("Luxshare.Ams", verbose, true, lf)
+
+	return logger
 }
 
 // Init sets up logging and should be called before log functions, usually in
@@ -86,7 +181,6 @@ func LoggerInit(name string, verbose, systemLog bool, logPath string, logFile st
 // logger.
 // If the logFile passed in also satisfies io.Closer, logFile.Close will be called
 // when closing the logger.
-
 func Init(name string, verbose, systemLog bool, logFile io.Writer) *Logger {
 	var il, wl, el io.Writer
 	if systemLog {
@@ -97,9 +191,9 @@ func Init(name string, verbose, systemLog bool, logFile io.Writer) *Logger {
 		}
 	}
 
-	iLogs = []io.Writer{logFile}
-	wLogs = []io.Writer{logFile}
-	eLogs = []io.Writer{logFile}
+	iLogs := []io.Writer{logFile}
+	wLogs := []io.Writer{logFile}
+	eLogs := []io.Writer{logFile}
 	if il != nil {
 		iLogs = append(iLogs, il)
 	}
@@ -283,104 +377,111 @@ func (l *Logger) Fatalf(format string, v ...interface{}) {
 	os.Exit(1)
 }
 
-func checkWriter(logs []io.Writer, writer io.Writer) int {
-	for i, w := range logs {
-		if w == writer {
-			return i
-		}
-	}
-
-	return -1
-}
-
-func replaceLogsWriter(logs []io.Writer, oldWriter io.Writer, newWriter io.Writer) bool {
-	i := checkWriter(logs, oldWriter)
-	if i < 0 {
-		return false
-	}
-
-	logs[i] = newWriter
-
-	return true
-}
-
-func ReplaceWriter(oldWriter io.Writer, newWriter io.Writer) bool {
-	if replaceLogsWriter(iLogs, oldWriter, newWriter) && replaceLogsWriter(eLogs, oldWriter, newWriter) && replaceLogsWriter(wLogs, oldWriter, newWriter) {
-		return true
-	} else {
-		return false
-	}
-}
-
 // Info uses the default logger and logs with the Info severity.
 // Arguments are handled in the manner of fmt.Print.
 func Info(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sInfo, 0, fmt.Sprint(v...))
 }
 
 // InfoDepth acts as Info but uses depth to determine which call frame to log.
 // InfoDepth(0, "msg") is the same as Info("msg").
 func InfoDepth(depth int, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sInfo, depth, fmt.Sprint(v...))
 }
 
 // Infoln uses the default logger and logs with the Info severity.
 // Arguments are handled in the manner of fmt.Println.
 func Infoln(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sInfo, 0, fmt.Sprintln(v...))
 }
 
 // Infof uses the default logger and logs with the Info severity.
 // Arguments are handled in the manner of fmt.Printf.
 func Infof(format string, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sInfo, 0, fmt.Sprintf(format, v...))
 }
 
 // Warning uses the default logger and logs with the Warning severity.
 // Arguments are handled in the manner of fmt.Print.
 func Warning(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sWarning, 0, fmt.Sprint(v...))
 }
 
 // WarningDepth acts as Warning but uses depth to determine which call frame to log.
 // WarningDepth(0, "msg") is the same as Warning("msg").
 func WarningDepth(depth int, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sWarning, depth, fmt.Sprint(v...))
 }
 
 // Warningln uses the default logger and logs with the Warning severity.
 // Arguments are handled in the manner of fmt.Println.
 func Warningln(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sWarning, 0, fmt.Sprintln(v...))
 }
 
 // Warningf uses the default logger and logs with the Warning severity.
 // Arguments are handled in the manner of fmt.Printf.
 func Warningf(format string, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sWarning, 0, fmt.Sprintf(format, v...))
 }
 
 // Error uses the default logger and logs with the Error severity.
 // Arguments are handled in the manner of fmt.Print.
 func Error(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sError, 0, fmt.Sprint(v...))
 }
 
 // ErrorDepth acts as Error but uses depth to determine which call frame to log.
 // ErrorDepth(0, "msg") is the same as Error("msg").
 func ErrorDepth(depth int, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sError, depth, fmt.Sprint(v...))
 }
 
 // Errorln uses the default logger and logs with the Error severity.
 // Arguments are handled in the manner of fmt.Println.
 func Errorln(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sError, 0, fmt.Sprintln(v...))
 }
 
 // Errorf uses the default logger and logs with the Error severity.
 // Arguments are handled in the manner of fmt.Printf.
 func Errorf(format string, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sError, 0, fmt.Sprintf(format, v...))
 }
 
@@ -388,6 +489,9 @@ func Errorf(format string, v ...interface{}) {
 // and ends with os.Exit(1).
 // Arguments are handled in the manner of fmt.Print.
 func Fatal(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sFatal, 0, fmt.Sprint(v...))
 	defaultLogger.Close()
 	os.Exit(1)
@@ -396,6 +500,9 @@ func Fatal(v ...interface{}) {
 // FatalDepth acts as Fatal but uses depth to determine which call frame to log.
 // FatalDepth(0, "msg") is the same as Fatal("msg").
 func FatalDepth(depth int, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sFatal, depth, fmt.Sprint(v...))
 	defaultLogger.Close()
 	os.Exit(1)
@@ -405,6 +512,9 @@ func FatalDepth(depth int, v ...interface{}) {
 // and ends with os.Exit(1).
 // Arguments are handled in the manner of fmt.Println.
 func Fatalln(v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sFatal, 0, fmt.Sprintln(v...))
 	defaultLogger.Close()
 	os.Exit(1)
@@ -414,6 +524,9 @@ func Fatalln(v ...interface{}) {
 // and ends with os.Exit(1).
 // Arguments are handled in the manner of fmt.Printf.
 func Fatalf(format string, v ...interface{}) {
+	if checkSysTimeOfDay() {
+		loggerReInit()
+	}
 	defaultLogger.output(sFatal, 0, fmt.Sprintf(format, v...))
 	defaultLogger.Close()
 	os.Exit(1)
