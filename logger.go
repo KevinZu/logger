@@ -143,22 +143,17 @@ func LoggerInit(logPath string, fileName string, verb bool, systemLog bool) *Log
 
 	logger := Init("Luxshare.Ams", verbose, true, lf)
 
-	if logger != nil {
+	logLock.Lock()
+	defer logLock.Unlock()
+	fileObj = lf
+	if !defaultLogger.initialized {
 		defaultLogger = logger
-		fileObj = lf
-		return logger
-	} else {
-		lf.Close()
-		return nil
 	}
 
+	return logger
 }
 
 func loggerReInit() *Logger {
-	if defaultLogger != nil {
-		defaultLogger.Close()
-		fileObj.Close()
-	}
 
 	file := logFileName + fmt.Sprintf("%d%s%d.log", sysYear, sysMonth, sysDay)
 
@@ -169,6 +164,16 @@ func loggerReInit() *Logger {
 	}
 
 	logger := Init("Luxshare.Ams", verbose, true, lf)
+
+	if defaultLogger != nil {
+		defaultLogger.Close()
+		fileObj.Close()
+	}
+
+	logLock.Lock()
+	defer logLock.Unlock()
+	defaultLogger = logger
+	fileObj = lf
 
 	return logger
 }
@@ -222,12 +227,6 @@ func Init(name string, verbose, systemLog bool, logFile io.Writer) *Logger {
 		}
 	}
 	l.initialized = true
-
-	logLock.Lock()
-	defer logLock.Unlock()
-	if !defaultLogger.initialized {
-		defaultLogger = &l
-	}
 
 	return &l
 }
