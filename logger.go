@@ -155,6 +155,21 @@ func LoggerInit(logPath string, fileName string, verb bool, systemLog bool) *Log
 
 func loggerReInit() *Logger {
 
+	year := time.Now().Year()
+	month := time.Now().Month().String()
+	day := time.Now().Day()
+
+	if sysYear == year && sysMonth == month && sysDay == day {
+		return nil
+	}
+
+	logLock.Lock()
+	defer logLock.Unlock()
+
+	sysYear = year
+	sysMonth = month
+	sysDay = day
+
 	file := logFileName + fmt.Sprintf("%d%s%d.log", sysYear, sysMonth, sysDay)
 
 	lf, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0660)
@@ -166,12 +181,11 @@ func loggerReInit() *Logger {
 	logger := Init("Luxshare.Ams", verbose, true, lf)
 
 	if defaultLogger != nil {
-		defaultLogger.Close()
+		defaultLogger.close()
 		fileObj.Close()
 	}
 
-	logLock.Lock()
-	defer logLock.Unlock()
+	
 	defaultLogger = logger
 	fileObj = lf
 
@@ -199,6 +213,7 @@ func Init(name string, verbose, systemLog bool, logFile io.Writer) *Logger {
 	iLogs := []io.Writer{logFile}
 	wLogs := []io.Writer{logFile}
 	eLogs := []io.Writer{logFile}
+
 	if il != nil {
 		iLogs = append(iLogs, il)
 	}
@@ -265,6 +280,14 @@ func (l *Logger) output(s severity, depth int, txt string) {
 func (l *Logger) Close() {
 	logLock.Lock()
 	defer logLock.Unlock()
+	for _, c := range l.closers {
+		if err := c.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to close log %v: %v\n", c, err)
+		}
+	}
+}
+
+func (l *Logger) close() {
 	for _, c := range l.closers {
 		if err := c.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to close log %v: %v\n", c, err)
@@ -379,108 +402,108 @@ func (l *Logger) Fatalf(format string, v ...interface{}) {
 // Info uses the default logger and logs with the Info severity.
 // Arguments are handled in the manner of fmt.Print.
 func Info(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sInfo, 0, fmt.Sprint(v...))
 }
 
 // InfoDepth acts as Info but uses depth to determine which call frame to log.
 // InfoDepth(0, "msg") is the same as Info("msg").
 func InfoDepth(depth int, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sInfo, depth, fmt.Sprint(v...))
 }
 
 // Infoln uses the default logger and logs with the Info severity.
 // Arguments are handled in the manner of fmt.Println.
 func Infoln(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sInfo, 0, fmt.Sprintln(v...))
 }
 
 // Infof uses the default logger and logs with the Info severity.
 // Arguments are handled in the manner of fmt.Printf.
 func Infof(format string, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sInfo, 0, fmt.Sprintf(format, v...))
 }
 
 // Warning uses the default logger and logs with the Warning severity.
 // Arguments are handled in the manner of fmt.Print.
 func Warning(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sWarning, 0, fmt.Sprint(v...))
 }
 
 // WarningDepth acts as Warning but uses depth to determine which call frame to log.
 // WarningDepth(0, "msg") is the same as Warning("msg").
 func WarningDepth(depth int, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sWarning, depth, fmt.Sprint(v...))
 }
 
 // Warningln uses the default logger and logs with the Warning severity.
 // Arguments are handled in the manner of fmt.Println.
 func Warningln(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sWarning, 0, fmt.Sprintln(v...))
 }
 
 // Warningf uses the default logger and logs with the Warning severity.
 // Arguments are handled in the manner of fmt.Printf.
 func Warningf(format string, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sWarning, 0, fmt.Sprintf(format, v...))
 }
 
 // Error uses the default logger and logs with the Error severity.
 // Arguments are handled in the manner of fmt.Print.
 func Error(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sError, 0, fmt.Sprint(v...))
 }
 
 // ErrorDepth acts as Error but uses depth to determine which call frame to log.
 // ErrorDepth(0, "msg") is the same as Error("msg").
 func ErrorDepth(depth int, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+	
 	defaultLogger.output(sError, depth, fmt.Sprint(v...))
 }
 
 // Errorln uses the default logger and logs with the Error severity.
 // Arguments are handled in the manner of fmt.Println.
 func Errorln(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+
 	defaultLogger.output(sError, 0, fmt.Sprintln(v...))
 }
 
 // Errorf uses the default logger and logs with the Error severity.
 // Arguments are handled in the manner of fmt.Printf.
 func Errorf(format string, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+	
 	defaultLogger.output(sError, 0, fmt.Sprintf(format, v...))
 }
 
@@ -488,9 +511,9 @@ func Errorf(format string, v ...interface{}) {
 // and ends with os.Exit(1).
 // Arguments are handled in the manner of fmt.Print.
 func Fatal(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+	
 	defaultLogger.output(sFatal, 0, fmt.Sprint(v...))
 	defaultLogger.Close()
 	os.Exit(1)
@@ -499,9 +522,9 @@ func Fatal(v ...interface{}) {
 // FatalDepth acts as Fatal but uses depth to determine which call frame to log.
 // FatalDepth(0, "msg") is the same as Fatal("msg").
 func FatalDepth(depth int, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+	
 	defaultLogger.output(sFatal, depth, fmt.Sprint(v...))
 	defaultLogger.Close()
 	os.Exit(1)
@@ -511,9 +534,9 @@ func FatalDepth(depth int, v ...interface{}) {
 // and ends with os.Exit(1).
 // Arguments are handled in the manner of fmt.Println.
 func Fatalln(v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+	
 	defaultLogger.output(sFatal, 0, fmt.Sprintln(v...))
 	defaultLogger.Close()
 	os.Exit(1)
@@ -523,9 +546,9 @@ func Fatalln(v ...interface{}) {
 // and ends with os.Exit(1).
 // Arguments are handled in the manner of fmt.Printf.
 func Fatalf(format string, v ...interface{}) {
-	if checkSysTimeOfDay() {
-		loggerReInit()
-	}
+
+	loggerReInit()
+	
 	defaultLogger.output(sFatal, 0, fmt.Sprintf(format, v...))
 	defaultLogger.Close()
 	os.Exit(1)
